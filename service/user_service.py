@@ -35,7 +35,7 @@ def user_login_service():
             print(session)
             return jsonify({
                 'success': True,
-                'message': "로그인 성공!"
+                'message': user
             }), 200
         
         # 조회 결과 없거나 비밀번호가 일치하지 않은 경우
