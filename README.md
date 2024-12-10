@@ -1,1 +1,1 @@
-# InC_Mini_Project_2_BE
+# InC_Mini_Project_2
