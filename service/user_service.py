@@ -57,80 +57,77 @@ def user_login_service():
         dbconn.get_db().close()
 
 def user_register_service():
-    if request.method == 'GET':
-        return render_template('register.html')
-    elif request.method == 'POST':
-        id = request.form.get('id')
-        name = request.form.get('name')
-        pw = request.form.get('pw')
-        cpw = request.form.get('pwcon')
+    id = request.json['id']
+    name = request.json['name']
+    pw = request.json['pw']
+    cpw = request.json['pwcon']
+    
+    # 회원가입 시도
+    logging.info(f'Registartion attempt for user: {id}, {name}')
+
+    # 필수 입력 사항 모두 입력하지 않은 경우
+    if not all([id, name, pw, cpw]):
+        return jsonify({
+                'success': False,
+                'message' : "모든 필드를 입력해주세요."
+            }), 500
+
+    # 비밀번호와 비밀번호 확인이 같지 않은 경우
+    if pw != cpw:
+        return jsonify({
+                'success': False,
+                'message' : "비밀번호가 일치하지 않습니다."
+            }), 500
+
+    # 비밀번호 정책(최소 8자 & 대소문자,숫자,특수문자 포함) 검사
+    if not is_valid_password(pw):
+        return jsonify({
+                'success': False,
+                'message' : "비밀번호는 최소 8자 이상이며, 대소문자, 숫자, 특수문자를 포함해야 합니다."
+            }), 500
+
+    try:
+        cursor = dbconn.get_db().cursor(pymysql.cursors.DictCursor)
         
-        # 회원가입 시도
-        logging.info(f'Registartion attempt for user: {id}, {name}')
-
-        # 필수 입력 사항 모두 입력하지 않은 경우
-        if not all([id, name, pw, cpw]):
+        # 사용자 ID 중복 체크
+        cursor.execute("SELECT * FROM users WHERE email = %s", (id,))
+        existing_user = cursor.fetchone()
+        if existing_user:
             return jsonify({
-                    'success': False,
-                    'message' : "모든 필드를 입력해주세요."
-                }), 500
+                'success': False,
+                'message' : "이미 사용 중인 email입니다."
+            }), 500
 
-        # 비밀번호와 비밀번호 확인이 같지 않은 경우
-        if pw != cpw:
+        # 비밀번호 해싱
+        hashed_password = generate_password_hash(pw)
+        
+        # 이전 비밀번호 재사용 방지
+        if existing_user and check_password_hash(existing_user['password'], pw):
             return jsonify({
-                    'success': False,
-                    'message' : "비밀번호가 일치하지 않습니다."
-                }), 500
+                'success': False,
+                'message' : "이전에 사용한 비밀번호는 사용할 수 없습니다."
+            }), 500
+        
+        # 회원 정보 생성 SQL 쿼리 실행
+        SQL = "INSERT INTO users (email, password, username) VALUES (%s, %s, %s)"
+        cursor.execute(SQL, (id, hashed_password, name))
 
-        # 비밀번호 정책(최소 8자 & 대소문자,숫자,특수문자 포함) 검사
-        if not is_valid_password(pw):
-            return jsonify({
-                    'success': False,
-                    'message' : "비밀번호는 최소 8자 이상이며, 대소문자, 숫자, 특수문자를 포함해야 합니다."
-                }), 500
-
-        try:
-            cursor = dbconn.get_db().cursor(pymysql.cursors.DictCursor)
-            
-            # 사용자 ID 중복 체크
-            cursor.execute("SELECT * FROM users WHERE email = %s", (id,))
-            existing_user = cursor.fetchone()
-            if existing_user:
-                return jsonify({
-                    'success': False,
-                    'message' : "이미 사용 중인 email입니다."
-                }), 500
-
-            # 비밀번호 해싱
-            hashed_password = generate_password_hash(pw)
-            
-            # 이전 비밀번호 재사용 방지
-            if existing_user and check_password_hash(existing_user['password'], pw):
-                return jsonify({
-                    'success': False,
-                    'message' : "이전에 사용한 비밀번호는 사용할 수 없습니다."
-                }), 500
-            
-            # 회원 정보 생성 SQL 쿼리 실행
-            SQL = "INSERT INTO users (email, password, username) VALUES (%s, %s, %s)"
-            cursor.execute(SQL, (id, hashed_password, name))
-
-            flash("회원가입이 완료되었습니다. 로그인해주세요.")
-            # 회원 가입 완료 로깅
-            logging.info(f'Successful registration for user: {id}')
-            return jsonify({
-                    'success': True,
-                    'message' : f'회원가입 되었습니다. user_id : {id}'
-                }), 200
-        except Exception as e:
-            # 사용자 ID 중복 체크, 비밀번호 해싱, 이전 비밀번호 재사용 방지, 회원 정보 생성 쿼리 진행에서, 오류 발생 로깅
-            logging.error(f'Error during registration for user: {id}: {str(e)}')
-            return jsonify({
-                    'success': False,
-                    'message' : "오류가 발생했습니다! 다시 시도해주세요."
-                }), 500
-        finally:
-            dbconn.get_db().close()
+        flash("회원가입이 완료되었습니다. 로그인해주세요.")
+        # 회원 가입 완료 로깅
+        logging.info(f'Successful registration for user: {id}')
+        return jsonify({
+                'success': True,
+                'message' : f'회원가입 되었습니다. user_id : {id}'
+            }), 200
+    except Exception as e:
+        # 사용자 ID 중복 체크, 비밀번호 해싱, 이전 비밀번호 재사용 방지, 회원 정보 생성 쿼리 진행에서, 오류 발생 로깅
+        logging.error(f'Error during registration for user: {id}: {str(e)}')
+        return jsonify({
+                'success': False,
+                'message' : "오류가 발생했습니다! 다시 시도해주세요."
+            }), 500
+    finally:
+        dbconn.get_db().close()
 
 def is_valid_password(password):
     # 비밀번호 정책: 최소 8자 & 대소문자, 숫자, 특수문자 포함
