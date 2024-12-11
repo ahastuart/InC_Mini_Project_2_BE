@@ -1,18 +1,17 @@
-from flask import app, redirect, render_template, session, url_for
+from flask import jsonify, request, session, redirect, url_for
 from dbconn.DBconn import dbconn
 import pymysql
 from . import mypage_bp
 
-
-@mypage_bp.route('/mypage')
-def mypage():
+@mypage_bp.route('/mypage', methods=['POST'])
+def fetch_mypage_data():
     # 세션에서 현재 로그인된 사용자 이메일 가져오기
-    user_email = session.get('email')
+    user_email = request.json['email']
 
     if not user_email:
-        return redirect(url_for('user_page.user_login_service'))  # 로그인 페이지로 리다이렉트
+        return jsonify({'error': '로그인이 필요합니다.'}), 401
 
-    # 데이터베이스에서 사용자 정보 가져오기
+    # 데이터베이스 연결
     connection = dbconn.get_db()
     cursor = connection.cursor(pymysql.cursors.DictCursor)  # DictCursor로 결과를 딕셔너리 형태로 반환
 
@@ -23,9 +22,9 @@ def mypage():
         user_data = cursor.fetchone()
 
         if not user_data:
-            return "사용자 정보를 찾을 수 없습니다.", 404
+            return jsonify({'error': '사용자 정보를 찾을 수 없습니다.'}), 404
 
-        # 모든 꿈 내용과 관련 노래 가져오기
+        # 꿈 내용과 추천 노래 가져오기
         recommendations_query = """
         SELECT d.content, m.song_name
         FROM dreams d
@@ -36,7 +35,7 @@ def mypage():
         cursor.execute(recommendations_query, (user_data['id'],))
         results = cursor.fetchall()
 
-        # 꿈 내용을 기준으로 데이터 그룹화
+        # 꿈 내용을 기준으로 추천 노래 그룹화
         recommendations = {}
         for row in results:
             content = row['content']
@@ -46,10 +45,14 @@ def mypage():
             if song_name:
                 recommendations[content].append(song_name)
 
-        return render_template('mypage.html', user_data=user_data, recommendations=recommendations)
+        # JSON 형태로 데이터 반환
+        return jsonify({
+            'user_data': user_data,
+            'recommendations': recommendations
+        })
     except Exception as e:
-        print(f"Error fetching user data or recommendations: {e}")  # 디버깅용
-        return f"오류 발생: {e}", 500
+        print(f"Error fetching user data or recommendations: {e}")
+        return jsonify({'error': str(e)}), 500
     finally:
         cursor.close()
         connection.close()
