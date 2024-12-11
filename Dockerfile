@@ -25,8 +25,8 @@ COPY .env .env
 # COPY nginx.conf /etc/nginx/nginx.conf
 
 # 애플리케이션 실행 포트 설정
-# EXPOSE 80
+EXPOSE 80
 
 # Gunicorn과 Nginx 실행
 #CMD ["sh", "-c", "gunicorn --bind 127.0.0.1:5000 app:app & nginx -g 'daemon off;'"]
-CMD ["gunicorn", "--workers=3", "--bind=127.0.0.1:5000", "app:app"]
+CMD ["gunicorn", "--workers=3", "--bind=0.0.0.0:80", "app:app"]
